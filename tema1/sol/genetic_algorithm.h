@@ -3,9 +3,9 @@
 
 #include "sack_object.h"
 #include "individual.h"
-
 // reads input from a given file
-int read_input(sack_object **objects, int *object_count, int *sack_capacity, int *generations_count, int argc, char *argv[]);
+int read_input(sack_object **objects, int *object_count, int *sack_capacity, int *generations_count, int *threads_count,
+                            int argc, char *argv[]);
 
 // displays all the objects that can be placed in the sack
 void print_objects(const sack_object *objects, int object_count);
@@ -38,6 +38,6 @@ void copy_individual(const individual *from, const individual *to);
 void free_generation(individual *generation);
 
 // runs the genetic algorithm
-void run_genetic_algorithm(const sack_object *objects, int object_count, int generations_count, int sack_capacity);
+void run_genetic_algorithm(int threads_count, sack_object *objects, int object_count, int generations_count, int sack_capacity);
 
 #endif

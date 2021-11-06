@@ -1,14 +1,17 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <pthread.h>
 #include "genetic_algorithm.h"
+#include "arg.h"
 
-int read_input(sack_object **objects, int *object_count, int *sack_capacity, int *generations_count, int argc, char *argv[])
+int read_input(sack_object **objects, int *object_count, int *sack_capacity, int *generations_count, int *threads_count,
+				int argc, char *argv[])
 {
 	FILE *fp;
 
-	if (argc < 3) {
-		fprintf(stderr, "Usage:\n\t./tema1 in_file generations_count\n");
+	if (argc < 4) {
+		fprintf(stderr, "Usage:\n\t./tema1 in_file generations_count thread_count\n");
 		return 0;
 	}
 
@@ -43,11 +46,17 @@ int read_input(sack_object **objects, int *object_count, int *sack_capacity, int
 	
 	if (*generations_count == 0) {
 		free(tmp_objects);
-
 		return 0;
 	}
 
 	*objects = tmp_objects;
+
+	*threads_count = (int) strtol(argv[3], NULL, 10);
+
+	if (*threads_count == 0) {
+		free(tmp_objects);
+		return 0;
+	}
 
 	return 1;
 }
@@ -178,12 +187,76 @@ void free_generation(individual *generation)
 	}
 }
 
-void run_genetic_algorithm(const sack_object *objects, int object_count, int generations_count, int sack_capacity)
+void *run_genetic_algorithm_parallel(void *_arg);
+void run_genetic_algorithm(int threads_count, sack_object *objects, int object_count, 
+						   int generations_count, int sack_capacity)
 {
-	int count, cursor;
 	individual *current_generation = (individual*) calloc(object_count, sizeof(individual));
 	individual *next_generation = (individual*) calloc(object_count, sizeof(individual));
+
+	// threads creation ----------------------------------------------
+	pthread_t *threads = (pthread_t*) malloc(threads_count * sizeof(pthread_t));	//TODO: memory checks
+	Arg *args = (Arg*) malloc(threads_count * sizeof(Arg));
+
+	for (int i = 0; i < threads_count; i++) {
+		args[i].id = i;
+		args[i].threads_count = threads_count;
+		args[i].objects = objects;
+		args[i].object_count = object_count;
+		args[i].generations_count = generations_count;
+		args[i].sack_capacity = sack_capacity;
+		args[i].current_generation = current_generation;
+		args[i].next_generation = next_generation;
+
+		int r = pthread_create(&threads[i], NULL, run_genetic_algorithm_parallel, &args[i].id);
+		if (r != 0) {
+			printf("Eroare la crearea thread-ului %d\n", i);
+			exit(-1);
+		}
+	}
+
+	for (int i = 0; i < threads_count; i++) {
+		int r = pthread_join(threads[i], NULL);
+		if (r) {
+			printf("Eroare la asteptarea thread-ului %d\n", i);
+			exit(-1);
+		}
+	}
+
+	// final steps -----------
+	compute_fitness_function(objects, current_generation, object_count, sack_capacity);
+	qsort(current_generation, object_count, sizeof(individual), cmpfunc);
+
+	print_best_fitness(current_generation);
+
+	// free resources for old generation
+	free_generation(current_generation);
+	free_generation(next_generation);
+
+	// free resources
+	free(current_generation);
+	free(next_generation);
+}
+
+void *run_genetic_algorithm_parallel(void *_arg)
+{
+	Arg *arg = (Arg*)_arg;
+	int count, cursor;
 	individual *tmp = NULL;
+	if (arg->id != 0) {
+		pthread_exit(NULL);
+		return NULL;
+	}
+
+	// for better code comprehension; TODO: maybe delete? for better memory performance
+	//int id = arg->id;
+	//int threads_count = arg->threads_count;
+	sack_object *objects = arg->objects;
+	int object_count = arg->object_count;
+	int generations_count = arg->generations_count;
+	int sack_capacity = arg->sack_capacity;
+	individual *current_generation = arg->current_generation;
+	individual *next_generation = arg->next_generation;
 
 	// set initial generation (composed of object_count individuals with a single item in the sack)
 	for (int i = 0; i < object_count; ++i) {
@@ -257,15 +330,6 @@ void run_genetic_algorithm(const sack_object *objects, int object_count, int gen
 		}
 	}
 
-	compute_fitness_function(objects, current_generation, object_count, sack_capacity);
-	qsort(current_generation, object_count, sizeof(individual), cmpfunc);
-	print_best_fitness(current_generation);
-
-	// free resources for old generation
-	free_generation(current_generation);
-	free_generation(next_generation);
-
-	// free resources
-	free(current_generation);
-	free(next_generation);
+	pthread_exit(NULL);
+	return NULL;
 }
