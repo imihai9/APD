@@ -1,6 +1,8 @@
 #ifndef GENETIC_ALGORITHM_H
 #define GENETIC_ALGORITHM_H
 
+#define min(a, b) (a<b ? a:b);
+
 #include "sack_object.h"
 #include "individual.h"
 // reads input from a given file
@@ -17,7 +19,8 @@ void print_generation(const individual *generation, int limit);
 void print_best_fitness(const individual *generation);
 
 // computes the fitness function for each individual in a generation
-void compute_fitness_function(const sack_object *objects, individual *generation, int object_count, int sack_capacity);
+void compute_fitness_function(const sack_object *objects, individual *generation, int object_count, int sack_capacity,
+                            int start, int end);
 
 // compares two individuals by fitness and then number of objects in the sack (to be used with qsort)
 int cmpfunc(const void *a, const void *b);
