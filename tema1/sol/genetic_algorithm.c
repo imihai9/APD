@@ -84,7 +84,7 @@ void print_best_fitness(const individual *generation)
 	printf("%d\n", generation[0].fitness);
 }
 
-void compute_fitness_function(const sack_object *objects, individual *generation, int object_count, int sack_capacity,
+void compute_fitness_function(const sack_object *objects, individual *generation, int sack_capacity,
 							  int start, int end)
 {
 	for (int i = start; i < end; ++i) {
@@ -102,28 +102,16 @@ void compute_fitness_function(const sack_object *objects, individual *generation
 	}
 }
 
-void swap (int *x, int *y) {
-	int temp = *x;
-    *x = *y;
-    *y = temp;
-}
-
-
-
 int cmpfunc(const void *a, const void *b)
 {
-	int i;
+	//int i;
 	individual *first = (individual *) a;
 	individual *second = (individual *) b;
 
 	int res = second->fitness - first->fitness; // decreasing by fitness
 	if (res == 0) {
-		int first_count = 0, second_count = 0;
-
-		for (i = 0; i < first->chromosome_length && i < second->chromosome_length; ++i) {
-			first_count += first->chromosomes[i];
-			second_count += second->chromosomes[i];
-		}
+		int first_count = first->set_chromosomes_count;
+		int second_count = second->set_chromosomes_count;
 
 		res = first_count - second_count; // increasing by number of objects in the sack
 		if (res == 0) {
@@ -193,19 +181,22 @@ void free_generation(individual *generation)
 	}
 }
 
-pthread_mutex_t mutex;
-
 void *run_genetic_algorithm_parallel(void *_arg);
 void run_genetic_algorithm(int threads_count, sack_object *objects, int object_count, 
 						   int generations_count, int sack_capacity)
 {
-		pthread_mutex_init(&mutex, NULL); // TODO: get rid of ~ / add in parameters
-
 	individual *current_generation = (individual*) calloc(object_count, sizeof(individual));
+	if (!current_generation)
+		exit(-1);
 	individual *next_generation = (individual*) calloc(object_count, sizeof(individual));
+	if (!next_generation)
+		exit(-1);
 
 	// threads creation ----------------------------------------------
 	pthread_t *threads = (pthread_t*) malloc(threads_count * sizeof(pthread_t));	//TODO: memory checks
+	if (!threads)
+		exit(-1);
+
 	pthread_barrier_t barrier;
 	pthread_barrier_init(&barrier, NULL, threads_count);
 
@@ -238,8 +229,7 @@ void run_genetic_algorithm(int threads_count, sack_object *objects, int object_c
 	}
 
 	// final steps -----------
-	qsort(current_generation, object_count, sizeof(individual), cmpfunc); //TODO: PARALELIZE!!
-
+	qsort(current_generation, object_count, sizeof(individual), cmpfunc);
 	print_best_fitness(current_generation);
 
 	// free resources for old generation
@@ -250,11 +240,7 @@ void run_genetic_algorithm(int threads_count, sack_object *objects, int object_c
 	free(current_generation);
 	free(next_generation);
 	pthread_barrier_destroy(&barrier);
-
-
-	pthread_mutex_destroy(&mutex);
 }
-
 
 void generate_thread_indices(Arg *arg, int N, int *start, int *end) {
 	*start = arg->id * (double)N / arg->threads_count;
@@ -266,7 +252,7 @@ void *run_genetic_algorithm_parallel(void *_arg) {
 	int count, cursor;
 	individual *tmp = NULL;
 
-	// for better code comprehension; 	TODO: maybe delete? for better memory performance
+	// for better code comprehension
 	sack_object *objects = arg->objects;
 	int object_count = arg->object_count;
 	int generations_count = arg->generations_count;
@@ -274,10 +260,10 @@ void *run_genetic_algorithm_parallel(void *_arg) {
 	individual *current_generation = arg->current_generation;
 	individual *next_generation = arg->next_generation;
 
-	int start, end;
-	generate_thread_indices(arg, object_count, &start, &end);
+	int start_obj_cnt, end_obj_cnt;
+	generate_thread_indices(arg, object_count, &start_obj_cnt, &end_obj_cnt);
 	
-	for (int i = start; i < end; ++i) {
+	for (int i = start_obj_cnt; i < end_obj_cnt; ++i) {
 		current_generation[i].fitness = 0;
 		current_generation[i].chromosomes = (int*) calloc(object_count, sizeof(int));
 		current_generation[i].chromosomes[i] = 1;
@@ -289,37 +275,42 @@ void *run_genetic_algorithm_parallel(void *_arg) {
 		next_generation[i].index = i;
 		next_generation[i].chromosome_length = object_count;
 	}
-	
-	pthread_barrier_wait(arg->barrier);
 
 	// iterate for each generation
 	for (int k = 0; k < generations_count; ++k) {
 		cursor = 0;
 
 		// compute fitness and sort by it
-		compute_fitness_function(objects, current_generation, object_count, sack_capacity, start, end);
+		compute_fitness_function(objects, current_generation, sack_capacity, start_obj_cnt, end_obj_cnt);
+
+		for (int i = start_obj_cnt; i < end_obj_cnt; i++) { // individuals
+			current_generation[i].set_chromosomes_count = 0;
+			for (int j = 0; j < current_generation[i].chromosome_length; j++) // chromozomes
+				current_generation[i].set_chromosomes_count += current_generation[i].chromosomes[j];
+		}
+
 		pthread_barrier_wait(arg->barrier);
 
-		if (arg->id == 0) {
+		if (arg->id == 0)
 			qsort(current_generation, object_count, sizeof(individual), cmpfunc);
-		}
-		// pthread_barrier_wait(arg->barrier); // Problema! Trebuie sa fie bariera, dar incetineste mult prea mult
+		
+		pthread_barrier_wait(arg->barrier);
 
 		// keep first 30% children (elite children selection)
 		count = object_count * 3 / 10;
-		int start1, end1;
-		generate_thread_indices(arg, count, &start1, &end1);
+		int start_curr_cnt, end_curr_cnt;
+		generate_thread_indices(arg, count, &start_curr_cnt, &end_curr_cnt);
 
-		for (int i = start1; i < end1; ++i) {
+		for (int i = start_curr_cnt; i < end_curr_cnt; ++i) {
 			copy_individual(current_generation + i, next_generation + i);
 		}
 		cursor = count;
 
 		// mutate first 20% children with the first version of bit string mutation
 		count = object_count * 2 / 10;
-		generate_thread_indices(arg, count, &start1, &end1);
+		generate_thread_indices(arg, count, &start_curr_cnt, &end_curr_cnt);
 
-		for (int i = start1; i < end1; ++i) {
+		for (int i = start_curr_cnt; i < end_curr_cnt; ++i) {
 			copy_individual(current_generation + i, next_generation + cursor + i);
 			mutate_bit_string_1(next_generation + cursor + i, k);
 		}
@@ -327,59 +318,59 @@ void *run_genetic_algorithm_parallel(void *_arg) {
 
 		// mutate next 20% children with the second version of bit string mutation
 		count = object_count * 2 / 10;
-		generate_thread_indices(arg, count, &start1, &end1);
+		generate_thread_indices(arg, count, &start_curr_cnt, &end_curr_cnt);
 
-		for (int i = start1; i < end1; ++i) {
+		for (int i = start_curr_cnt; i < end_curr_cnt; ++i) {
 			copy_individual(current_generation + i + count, next_generation + cursor + i);
 			mutate_bit_string_2(next_generation + cursor + i, k);
 		}
 		cursor += count;
 		
-		pthread_barrier_wait(arg->barrier);
 		// crossover first 30% parents with one-point crossover
 		// (if there is an odd number of parents, the last one is kept as such)
 		count = object_count * 3 / 10;
 
 		if (count % 2 == 1) {
-			copy_individual(current_generation + object_count - 1, next_generation + cursor + count - 1);
+			if (arg->id == 0) // memcpy only on one thread
+				copy_individual(current_generation + object_count - 1, next_generation + cursor + count - 1);
 			count--;
 		}
 
-		generate_thread_indices(arg, count, &start1, &end1);
-		if (start1 % 2 == 1 && start1 < count - 1)
-			start1++; 
-		if (end1 % 2 == 0)
-			end1--;
+		// Divide [0, count] interval between threads_count indices
+		// that start with an even index
+		generate_thread_indices(arg, count, &start_curr_cnt, &end_curr_cnt);
+		if (start_curr_cnt % 2 == 1 && start_curr_cnt < count - 1)
+			start_curr_cnt++; 
 
-		for (int i = start1; i < end1; i += 2) {
+		for (int i = start_curr_cnt; i < end_curr_cnt; i += 2) {
 			crossover(current_generation + i, next_generation + cursor + i, k);
 		}
-
 		
-		pthread_barrier_wait(arg->barrier);
 		// switch to new generation
 		tmp = current_generation;
 		current_generation = next_generation;
 		next_generation = tmp;
-		pthread_barrier_wait(arg->barrier);
 
-	
-		for (int i = start; i < end; ++i) {
+		for (int i = start_obj_cnt; i < end_obj_cnt; ++i) {
 			current_generation[i].index = i;
 		}
 
-		if (arg->id == 0) {
-			if (k % 5 == 0) {
+		if (arg->id == 0 && k % 5 == 0) {
 				print_best_fitness(current_generation);
-			}
 		}
 
 		pthread_barrier_wait(arg->barrier);
 	}
 
+	compute_fitness_function(objects, current_generation, sack_capacity, start_obj_cnt, end_obj_cnt);
+
+	for (int i = start_obj_cnt; i < end_obj_cnt; i++) { // individuals
+		current_generation[i].set_chromosomes_count = 0;
+		for (int j = 0; j < current_generation[i].chromosome_length; j++) // chromozomes
+			current_generation[i].set_chromosomes_count += current_generation[i].chromosomes[j];
+	}
+
 	pthread_barrier_wait(arg->barrier);
-
-	compute_fitness_function(objects, current_generation, object_count, sack_capacity, start, end);
-
+	
 	pthread_exit(NULL);
 }
