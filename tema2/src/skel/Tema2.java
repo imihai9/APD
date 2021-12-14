@@ -1,14 +1,15 @@
-package skel;
-
+import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileNotFoundException;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Scanner;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.ForkJoinPool;
 
 public class Tema2 {
     private int workersCnt;
@@ -20,9 +21,11 @@ public class Tema2 {
     private String[] documentNames;
 
     private List<MapTask> mapTaskList;
+    private List<ReduceTask> reduceTaskList;
 
     public Tema2 () {
         this.mapTaskList = new LinkedList<>();
+        this.reduceTaskList = new LinkedList<>();
     }
 
     private void readData() {
@@ -73,16 +76,9 @@ public class Tema2 {
         }
     }
 
-    private void launchMappers() {
-        ExecutorService tpe = Executors.newFixedThreadPool(workersCnt);
-        for (MapTask mapTask : mapTaskList) {
-            tpe.submit(mapTask);
-        }
-        // Wait for all tasks to finish, then shutdown executor (~join)
-        tpe.shutdown();
-    }
-
     private void combine() {
+        // TODO: do this in reduce task, with stream for the corresponding doc name
+        // TODO OR: do this in map task, with thread-safe hashmap
         // Maps document name -> partial map operation results (MapResult)
         Map<String, List<MapResult>> docMapResults = new HashMap<>();
         // Initialize map with all document names and a corresponding empty list
@@ -95,10 +91,43 @@ public class Tema2 {
             docList.add(mapResult);
         }
 
-        //System.out.println(docMapResults.toString());
+        // Create tasks for each document, having the list of partial map results as arg.
+        for (Map.Entry<String, List<MapResult>> docMapResult : docMapResults.entrySet()) {
+            reduceTaskList.add(new ReduceTask(docMapResult.getValue()));
+        }
     }
 
-    public static void main(String[] args) {
+    private void launchMappers() {
+        ForkJoinPool fjp = new ForkJoinPool(workersCnt);
+        for (MapTask mapTask : mapTaskList) {
+            fjp.invoke(mapTask);
+        }
+        // Wait for all tasks to finish, then shutdown executor (~join)
+        fjp.shutdown();
+    }
+
+    private void launchReducers() {
+        ForkJoinPool fjp = new ForkJoinPool(workersCnt);
+        for (ReduceTask reduceTask : reduceTaskList) {
+            fjp.invoke(reduceTask);
+        }
+        // Wait for all tasks to finish, then shutdown executor (~join)
+        fjp.shutdown();
+    }
+
+    private void writeOutput() throws IOException {
+        BufferedWriter writer = new BufferedWriter(new FileWriter(outFileName));
+
+        //TODO: make reduceTaskList and mapTaskList arrays, to sort more efficiently.
+        reduceTaskList.sort(Comparator.comparing(ReduceTask::getRank));
+        for (ReduceTask reduceTask : reduceTaskList) {
+           writer.write(reduceTask.getResult().toString() + "\n");
+        }
+
+        writer.close();
+    }
+
+    public static void main(String[] args) throws IOException {
         Tema2 tema = new Tema2();
 
         if (args.length < 3) {
@@ -114,5 +143,8 @@ public class Tema2 {
         tema.splitInput();
         tema.launchMappers();
         tema.combine();
+        tema.launchReducers();
+
+        tema.writeOutput();
     }
 }

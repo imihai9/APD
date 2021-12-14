@@ -1,18 +1,13 @@
-package skel;
-
 import java.io.BufferedReader;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
-import java.util.HashMap;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
 import java.util.StringTokenizer;
+import java.util.concurrent.RecursiveTask;
 
 import static java.lang.Math.min;
 
-public class MapTask implements Runnable {
+public class MapTask extends RecursiveTask<Void> {
     // Key: fileName (?)
     private final String fileName;
     private final int fragSize;
@@ -138,13 +133,11 @@ public class MapTask implements Runnable {
         } catch (IOException e) {
             e.printStackTrace();
         }
-
-        //System.out.println("!!!!!OFFSET " + fragOffset + " " + fragment);
     }
 
     private void tokenize() {
         StringTokenizer itr = new StringTokenizer(fragment, separators);
-
+        //TODO: compute first here, then move variables to Result
         while (itr.hasMoreTokens()) {
             String token = itr.nextToken();
             int wordLength = token.length();
@@ -164,11 +157,9 @@ public class MapTask implements Runnable {
     }
 
     @Override
-    public void run() {
+    protected Void compute() {
         readFragment();
         tokenize();
-
-//        System.out.println(result.getMaxWordList());
-//        System.out.println(result.getDictionary());
+        return null;
     }
 }
