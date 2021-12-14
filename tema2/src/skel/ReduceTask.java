@@ -85,7 +85,7 @@ public class ReduceTask extends RecursiveTask<Void> {
             totalWordCount += wordCount;
         }
 
-        this.rank = (float) rankNumerator / totalWordCount;
+        this.rank = (float) (rankNumerator / totalWordCount);
     }
 
     @Override

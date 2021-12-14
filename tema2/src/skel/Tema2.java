@@ -87,8 +87,10 @@ public class Tema2 {
 
         for (MapTask mapTask : mapTaskList) {
             MapResult mapResult = mapTask.getResult();
-            List<MapResult> docList = docMapResults.get(mapResult.getFileName());
-            docList.add(mapResult);
+            if (!mapResult.getDictionary().isEmpty()) {
+                List<MapResult> docList = docMapResults.get(mapResult.getFileName());
+                docList.add(mapResult);
+            }
         }
 
         // Create tasks for each document, having the list of partial map results as arg.
@@ -119,7 +121,7 @@ public class Tema2 {
         BufferedWriter writer = new BufferedWriter(new FileWriter(outFileName));
 
         //TODO: make reduceTaskList and mapTaskList arrays, to sort more efficiently.
-        reduceTaskList.sort(Comparator.comparing(ReduceTask::getRank));
+        reduceTaskList.sort(Comparator.comparing(ReduceTask::getRank).reversed());
         for (ReduceTask reduceTask : reduceTaskList) {
            writer.write(reduceTask.getResult().toString() + "\n");
         }
@@ -140,6 +142,7 @@ public class Tema2 {
         tema.outFileName = args[2];
 
         tema.readData();
+
         tema.splitInput();
         tema.launchMappers();
         tema.combine();

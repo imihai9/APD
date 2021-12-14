@@ -20,7 +20,7 @@ public class MapTask extends RecursiveTask<Void> {
     private final StringBuilder fragmentBuilder;
     private String fragment;
     private int partialBufferSize; // Size of buffer used to read an incomplete word
-    public static final String separators = ";:/?~\\.,><`[]{}()!@#$%^&-_+'=*\"| \t\r\n";
+    public static final String separators = ";:/?~\\.,><`[]{}()!@#$%^&-_+'=*\"| \t\r\n\r\0";
     private int maxWordLength;
 
     public MapTask(String fileName, int fragSize, int fragOffset) {
@@ -44,7 +44,9 @@ public class MapTask extends RecursiveTask<Void> {
         int i = 0;
         while (i < fragmentBuilder.length() && separators.indexOf(fragmentBuilder.charAt(i)) == -1)
             i++;
-
+        // Get rid of beginning whitespaces
+        while (i < fragmentBuilder.length() && separators.indexOf(fragmentBuilder.charAt(i)) != -1)
+            i++;
         fragment = fragmentBuilder.substring(i);
     }
 
@@ -140,6 +142,7 @@ public class MapTask extends RecursiveTask<Void> {
         //TODO: compute first here, then move variables to Result
         while (itr.hasMoreTokens()) {
             String token = itr.nextToken();
+
             int wordLength = token.length();
 
             if (wordLength == maxWordLength)
@@ -159,6 +162,15 @@ public class MapTask extends RecursiveTask<Void> {
     @Override
     protected Void compute() {
         readFragment();
+        if (fragment.isEmpty()) {
+            return null;
+        }
+
+//        if (fileName.equals("tests/files/sonnets_10")) {
+//            System.out.println("OFFSET " + fragOffset);
+//            System.out.println(fragment);
+//        }
+
         tokenize();
         return null;
     }
