@@ -1,3 +1,4 @@
+package skel;
 public class ReduceResult {
     private final String fileName;
     private final float rank;
@@ -13,14 +14,6 @@ public class ReduceResult {
 
     public String getFileName() {
         return fileName;
-    }
-
-    public float getRank() {
-        return rank;
-    }
-
-    public int getMaxLength() {
-        return maxLength;
     }
 
     public int getCountMaxLengthWords() {

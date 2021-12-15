@@ -1,5 +1,6 @@
+package skel;
 import java.util.HashMap;
-import java.util.LinkedList;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.RecursiveTask;
@@ -11,7 +12,6 @@ public class ReduceTask extends RecursiveTask<Void> {
 
     // Output
     private ReduceResult result;
-
     private List<String> finalMaxWordList;
     private final Map<Integer, Integer> finalDictionary;
     private int maxLength;
@@ -23,7 +23,7 @@ public class ReduceTask extends RecursiveTask<Void> {
 
     public ReduceTask(List<MapResult> mapResultList) {
         this.mapResultList = mapResultList;
-        this.finalMaxWordList = new LinkedList<>();
+        this.finalMaxWordList = new ArrayList<>();
         this.finalDictionary = new HashMap<>();
         this.rank = 0.0f;
 
@@ -58,8 +58,6 @@ public class ReduceTask extends RecursiveTask<Void> {
                 .flatMap(s -> s.getMaxWordList().stream())
                 .filter(x -> x.length() == maxLength)
                 .collect(Collectors.toList());
-
-        //TODO: maybe make this more efficient? (if time permits)
     }
 
     private void generateFibonacci (int k) {
@@ -85,7 +83,7 @@ public class ReduceTask extends RecursiveTask<Void> {
             totalWordCount += wordCount;
         }
 
-        this.rank = (float) (rankNumerator / totalWordCount);
+        this.rank = rankNumerator / totalWordCount;
     }
 
     @Override

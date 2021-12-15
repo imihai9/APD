@@ -1,3 +1,4 @@
+package skel;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -5,8 +6,8 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.util.Comparator;
 import java.util.HashMap;
-import java.util.LinkedList;
 import java.util.List;
+import java.util.LinkedList;
 import java.util.Map;
 import java.util.Scanner;
 import java.util.concurrent.ForkJoinPool;
@@ -20,8 +21,8 @@ public class Tema2 {
     private int documentsCnt;
     private String[] documentNames;
 
-    private List<MapTask> mapTaskList;
-    private List<ReduceTask> reduceTaskList;
+    private final List<MapTask> mapTaskList;
+    private final List<ReduceTask> reduceTaskList;
 
     public Tema2 () {
         this.mapTaskList = new LinkedList<>();
@@ -77,8 +78,10 @@ public class Tema2 {
     }
 
     private void combine() {
-        // TODO: do this in reduce task, with stream for the corresponding doc name
-        // TODO OR: do this in map task, with thread-safe hashmap
+        // TODO (in next version): do this in reduce task, with stream for the corresponding doc
+        // name; OR: do this in map task, with thread-safe hashmap
+        // (held in main; thread has reference)
+
         // Maps document name -> partial map operation results (MapResult)
         Map<String, List<MapResult>> docMapResults = new HashMap<>();
         // Initialize map with all document names and a corresponding empty list
@@ -120,7 +123,6 @@ public class Tema2 {
     private void writeOutput() throws IOException {
         BufferedWriter writer = new BufferedWriter(new FileWriter(outFileName));
 
-        //TODO: make reduceTaskList and mapTaskList arrays, to sort more efficiently.
         reduceTaskList.sort(Comparator.comparing(ReduceTask::getRank).reversed());
         for (ReduceTask reduceTask : reduceTaskList) {
            writer.write(reduceTask.getResult().toString() + "\n");
