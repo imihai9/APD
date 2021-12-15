@@ -1,4 +1,3 @@
-package skel;
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
@@ -95,7 +94,7 @@ public class MapTask extends RecursiveTask<Void> {
     private void readFragment() throws IOException, NullPointerException {
         BufferedReader reader = null;
 
-        reader = new BufferedReader(new FileReader(fileName)); //, fragSize + 2)
+        reader = new BufferedReader(new FileReader(fileName));
         char[] buffer = new char[fragSize + 2]; // assigns fragment + 2 extra chars (start, end)
         buffer[0] = ' '; // placeholder for further checks
 

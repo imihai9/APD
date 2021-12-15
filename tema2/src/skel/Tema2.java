@@ -1,4 +1,3 @@
-package skel;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -107,7 +106,7 @@ public class Tema2 {
         for (MapTask mapTask : mapTaskList) {
             fjp.invoke(mapTask);
         }
-        // Wait for all tasks to finish, then shutdown executor (~join)
+        // Wait for all tasks to finish, then shutdown executor
         fjp.shutdown();
     }
 
@@ -116,7 +115,7 @@ public class Tema2 {
         for (ReduceTask reduceTask : reduceTaskList) {
             fjp.invoke(reduceTask);
         }
-        // Wait for all tasks to finish, then shutdown executor (~join)
+        // Wait for all tasks to finish, then shutdown executor
         fjp.shutdown();
     }
 
@@ -135,7 +134,7 @@ public class Tema2 {
         Tema2 tema = new Tema2();
 
         if (args.length < 3) {
-            System.err.println("Usage: skel.Tema2 <workers> <in_file> <out_file>");
+            System.err.println("Usage: Tema2 <workers> <in_file> <out_file>");
             return;
         }
 

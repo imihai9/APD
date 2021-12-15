@@ -1,4 +1,3 @@
-package skel;
 public class ReduceResult {
     private final String fileName;
     private final float rank;
