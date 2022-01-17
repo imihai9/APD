@@ -17,8 +17,24 @@ int *parents;
 int *v, v_len;
 int *v_recv, v_recv_len;
 
-// Variables only used by coordinators )
+// Variables only used by coordinators
 int *coords, *c_cnt_workers, cnt_workers_total;
+int *workers; // worker ids
+int *v_new;
+
+// Used by coordinator 0
+int *start_pos;
+int *v_final;
+
+
+// int MPI_Send(const void *buf, int count, MPI_Datatype datatype, int dest, int tag, MPI_Comm comm)
+// Uses default communicator MPI_COMM_WORLD
+// verbose = 0 (quiet) OR !=0 (print M(src, dst))
+void send_print(void *buf, int count, MPI_Datatype datatype, int dest, int tag, char verbose){
+    MPI_Send(buf, count, datatype, dest, tag, MPI_COMM_WORLD);
+    if (verbose)
+        printf("M(%d,%d)\n", rank, parents[rank]); // log
+}
 
 void print_topology(int rank) {
     printf("%d -> ", rank);
@@ -77,7 +93,7 @@ void c_establish_topology(int *coords, int *c_cnt_workers) {
 }
 
 // (COORD 0) Divides and assigns array chunks to each coordinate
-void assign_arr_to_coords (int *v, int v_len, int *c_cnt_workers, int *coords, int cnt_workers_total) {
+void c0_assign_arr_to_coords (int *v, int v_len, int *c_cnt_workers, int *coords, int cnt_workers_total) {
     v = (int*)malloc(v_len *sizeof(int));
     for (int i = 0; i < v_len; i++)
         v[i] = i;
@@ -89,6 +105,8 @@ void assign_arr_to_coords (int *v, int v_len, int *c_cnt_workers, int *coords, i
         id_end = id_start + c_cnt_workers[c_rank] - 1;
 
         int start = id_start * (double) v_len / cnt_workers_total;
+        start_pos[c_rank] = start;
+
         int end   = min((id_end + 1) * (double) v_len / cnt_workers_total, v_len);
         int chunk_len = end - start;
 
@@ -118,23 +136,74 @@ void c_recv_array_chunk(int **v_recv, int *v_recv_len, int v_total_len, int *c_c
 }
 
 // (ALL COORDS) Divides and assigns subarray chunks to each worker
-void assign_arr_to_workers(int *v, int v_len, int cnt_workers) {
+void c_assign_arr_to_workers(int *v, int len, int cnt_workers) {
     int id = 0;
-    for (int w_rank = 3; w_rank < num_procs; w_rank++) {    //TODO: 3 define
-        if (parents[w_rank] == rank) {
-            int start = id * (double) v_len / cnt_workers;
-            int end   = min((id + 1) * (double) v_len / cnt_workers, v_len);
-            int chunk_len = end - start;
-            printf("CHUNK LEN %d\n", chunk_len);
-            // Send array chunk length first
-            MPI_Send(&chunk_len, 1, MPI_INT, w_rank, ARRAY_LEN_SEND_TAG, MPI_COMM_WORLD);
-            printf("M(%d,%d)\n", rank, w_rank);
-            // Send array chunk
-            MPI_Send(v + start, chunk_len, MPI_INT, w_rank, ARRAY_SEND_TAG, MPI_COMM_WORLD);
-
-            id++;
-        }
+    for (int id = 0; id < cnt_workers; id++) {
+        int start = id * (double) len / cnt_workers;
+        int end   = min((id + 1) * (double) len / cnt_workers, len);
+        int chunk_len = end - start;
+        // Send array chunk length first
+        MPI_Send(&chunk_len, 1, MPI_INT, workers[id], ARRAY_LEN_SEND_TAG, MPI_COMM_WORLD);
+        printf("M(%d,%d)\n", rank, workers[id]);
+        // Send array chunk
+        MPI_Send(v + start, chunk_len, MPI_INT, workers[id], ARRAY_SEND_TAG, MPI_COMM_WORLD);
+        printf("M(%d,%d)\n", rank, workers[id]);
     }
+}
+
+void c_recv_arr_from_workers(int *v_new, int len, int cnt_workers) {
+    // Rebuild array from chunks received from workers in 'v'
+    MPI_Status status;
+    int chunk_len;
+
+    // Receive cnt_workers arrays, in any order
+    for (int i = 0; i < cnt_workers; i++) {
+        MPI_Recv(&chunk_len, 1, MPI_INT, MPI_ANY_SOURCE, ARRAY_LEN_SEND_TAG, MPI_COMM_WORLD, &status);
+
+        // Find id corresponding to the worker that sent the msg
+        int id;
+        for (int i_id = 0; i_id < cnt_workers; i_id++) {
+            if (workers[i_id] == status.MPI_SOURCE) {
+                id = i_id;
+                break;
+            }
+        }
+
+        // Recalculation is less expensive than keeping start positions in an array
+        int start = id * (double) len / cnt_workers;
+        MPI_Recv(v_new + start, chunk_len, MPI_INT, workers[id], ARRAY_SEND_TAG, MPI_COMM_WORLD, &status);
+    }
+}
+
+void c_send_arr_to_c0(int *v_new, int len) {
+    MPI_Send(&len, 1, MPI_INT, 0, ARRAY_LEN_SEND_TAG, MPI_COMM_WORLD);
+    printf("M(%d,%d)\n", rank, 0);
+
+    MPI_Send(v_new, len, MPI_INT, 0, ARRAY_SEND_TAG, MPI_COMM_WORLD);
+    printf("M(%d,%d)\n", rank, 0);
+}
+
+void c0_assemble_final_array(int len) { //TODO: delete param
+    MPI_Status status;
+    int chunk_len;
+
+    v_final = (int*)malloc(len * sizeof(int));
+    memcpy(v_final + 0, v_new, v_recv_len * sizeof(int));
+    // Receive subarrays, in any order
+
+    for (int i = 0; i < CNT_COORDS - 1; i++) {
+        MPI_Recv(&chunk_len, 1, MPI_INT, MPI_ANY_SOURCE, ARRAY_LEN_SEND_TAG, MPI_COMM_WORLD, &status);
+        int coord_id = status.MPI_SOURCE;
+        MPI_Recv(v_final + start_pos[coord_id], chunk_len, MPI_INT, coord_id, ARRAY_SEND_TAG, MPI_COMM_WORLD, &status);
+    }
+}
+
+void c0_print_final_array (int len) {
+    printf("Rezultat: ");
+    for (int i = 0; i < len; i++) {
+        printf("%d ", v_final[i]);
+    }
+    printf("\n");
 }
 
 // MAIN COORDINATOR FUNCTIONS -----------------------------------
@@ -143,8 +212,9 @@ void exec_coordinator_part1(int v_len) {
     for (int i = 0; i < CNT_COORDS; i++)
         coords[i] = i;
 
-    int num_workers, *workers;
+    int num_workers;
     c_cnt_workers = calloc (CNT_COORDS, sizeof(int)); // Number of workers that each coordinator has
+
     char file_name[INP_FILE_NAME_SIZE];
 
     // Read own workers from file
@@ -179,21 +249,29 @@ void exec_coordinator_part1(int v_len) {
 
 void exec_coordinator_part2 (int v_len) {
     if (rank == 0) {
-        assign_arr_to_coords(v, v_len, c_cnt_workers, coords, cnt_workers_total);
+        // Starting position in initial array of each subarray given to coordinators
+        start_pos = (int*) malloc(sizeof(int) * CNT_COORDS);
+        c0_assign_arr_to_coords(v, v_len, c_cnt_workers, coords, cnt_workers_total);
     }
-    else {
+    else
         c_recv_array_chunk(&v_recv, &v_recv_len, v_len, c_cnt_workers, cnt_workers_total);
+
+    v_new = (int*) malloc(v_recv_len * sizeof(int));
+    c_assign_arr_to_workers(v_recv, v_recv_len, c_cnt_workers[rank]);
+    c_recv_arr_from_workers(v_new, v_recv_len, c_cnt_workers[rank]);
+}
+
+void exec_coordinator_part3 (int v_len) {
+    if (rank != 0)
+        c_send_arr_to_c0(v_new, v_recv_len);
+    else {
+        c0_assemble_final_array(v_len);
+      //  c0_print_final_array(v_len);
     }
-
-    printf("COORD%d: ", rank);
-    for (int i = 0; i < v_recv_len; i++)
-       printf("%d ", v_recv[i]);
-    printf("\n");
-
-    assign_arr_to_workers(v_recv, v_recv_len, c_cnt_workers[rank]);
 }
 
 // WORKER HELP FUNCTIONS ------------------------------
+
 void w_recv_array_chunk() {
     MPI_Status status;
     // Receive array len;   parents[rank] == coordinator
@@ -201,11 +279,6 @@ void w_recv_array_chunk() {
     v = (int*)malloc(v_len * sizeof(int));
     // Receive array
     MPI_Recv(v, v_len, MPI_INT, parents[rank], ARRAY_SEND_TAG, MPI_COMM_WORLD, &status);
-
-    for (int i = 0; i < v_len; i++) {
-        printf("%d ", v[i]);
-    }
-    printf("\n");
 }
 
 void w_compute() {
@@ -215,11 +288,15 @@ void w_compute() {
 
 // Send array result (after computation) to coordinator
 void w_send_array_result() {
+    MPI_Send(&v_len, 1, MPI_INT, parents[rank], ARRAY_LEN_SEND_TAG, MPI_COMM_WORLD);
+    printf("M(%d,%d)\n", rank, parents[rank]); // log
+
     MPI_Send(v, v_len, MPI_INT, parents[rank], ARRAY_SEND_TAG, MPI_COMM_WORLD);
-    printf("M(%d,%d)\n", rank, parents[rank]);
+    printf("M(%d,%d)\n", rank, parents[rank]); // log
 }
 
 // MAIN WORKER FUNCTIONS ------------------------------
+
 void exec_worker_part1() {
     int coord; // coordinator
 
@@ -237,6 +314,8 @@ void exec_worker_part2() {
     w_send_array_result();
 }
 
+// MAIN -----------------------------------------------
+
 int main (int argc, char *argv[]) {
     MPI_Init(&argc, &argv);
     MPI_Comm_size(MPI_COMM_WORLD, &num_procs); // Total number of processes.
@@ -251,12 +330,27 @@ int main (int argc, char *argv[]) {
     else
         exec_worker_part1();
 
+    // Barrier, to make sure each node receives the complete topology
     MPI_Barrier(MPI_COMM_WORLD);
 
     if (rank < CNT_COORDS)
         exec_coordinator_part2(v_len);
     else
         exec_worker_part2();
+
+    // Barrier, to make sure that coordinator 0 is ready to receive
+    // subarrays from the other coordinators
+    MPI_Barrier(MPI_COMM_WORLD);
+
+    if (rank < CNT_COORDS)
+        exec_coordinator_part3(v_len);
+
+    // Barrier, to avoid messages generated while printing the
+    // result
+    MPI_Barrier(MPI_COMM_WORLD);
+
+    if (rank == 0)
+        c0_print_final_array(v_len);
 
     MPI_Finalize();
     return 0;
