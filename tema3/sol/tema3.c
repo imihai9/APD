@@ -87,6 +87,9 @@ void c_establish_topology(int *coords, int *c_cnt_workers) {
             }
         }
     }
+
+    if (parents_recv)
+        free(parents_recv);
 }
 
 // (COORD 0) Divides and assigns array chunks to each coordinate
