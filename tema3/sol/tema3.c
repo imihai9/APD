@@ -19,7 +19,6 @@ int *v, v_len;
 int *v_recv, v_recv_len;
 
 // Variables only used by coordinators
-char faulty_link; // 0 = (0, 1) link exists
 int *coords, *c_cnt_workers, cnt_workers_total;
 int *workers; // worker ids
 
@@ -27,7 +26,7 @@ int *workers; // worker ids
 int *start_pos;
 int *v_final;
 
-// Uses defaulty_link communicator MPI_COMM_WORLD
+// Uses default communicator MPI_COMM_WORLD
 // verbose = 0 (quiet) OR !=0 (print M(src, dst))
 void send_print(void *buf, int count, MPI_Datatype datatype, int dest, int tag, char verbose){
     MPI_Send(buf, count, datatype, dest, tag, MPI_COMM_WORLD);
@@ -263,6 +262,12 @@ void exec_coordinator_part3 () {
 
 // WORKER HELP FUNCTIONS ------------------------------
 
+// Receive parent array from coordinator
+void w_recv_parent_array(int *parents) {
+    MPI_Status status;
+    MPI_Recv(parents, num_procs, MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &status);
+}
+
 void w_recv_array_chunk() {
     MPI_Status status;
     // Receive array len;   parents[rank] == coordinator
@@ -286,13 +291,7 @@ void w_send_array_result() {
 // MAIN WORKER FUNCTIONS ------------------------------
 
 void exec_worker_part1() {
-    int coord; // coordinator
-
-    // Receive parent array from coordinator
-    MPI_Status status;
-    MPI_Recv(parents, num_procs, MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &status);
-
-    coord = parents[rank]; // same as status.MPI_SOURCE;
+    w_recv_parent_array(parents); // coord = parents[rank];
     print_topology(rank, parents);
 }
 
@@ -313,10 +312,8 @@ int main (int argc, char *argv[]) {
 
     if (rank < CNT_COORDS) {
         // If current process is COORD 0 => assign v_len parameter
-        if (rank == 0) {
+        if (rank == 0)
             v_len = atoi(argv[1]);
-            faulty_link = atoi(argv[2]);
-        }
         exec_coordinator_part1();
     } else {
         exec_worker_part1();
